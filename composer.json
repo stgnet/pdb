@@ -1,0 +1,24 @@
+{
+	"name": "stgnet/pdb",
+	"type": "library",
+	"description": "PDO DataBase cruddy interface for stgnet/pui",
+	"homepage": "http://pdb.stg.net/",
+	"keywords": ["pdo", "database", "crud"],
+	"license": "Apache 2",
+	"authors": [
+		{
+			"name": "Scott Griepentrog",
+			"email": "scott@griepentrog.com",
+			"homepage": "http://stg.net/",
+			"role": "Developer"
+		}
+	],
+	"require": {
+		"php": ">=5.3.0"
+	},
+	"autoload": {
+ 		"classmap": [
+			""
+		]
+	}
+}
