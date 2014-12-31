@@ -64,9 +64,12 @@ class pdb
 	private $table;
 	public $pdo;
 
-	private function pdo_dsn($params, $omitdbname = false)
+	private function pdo_args($params, $omitdbname = false)
 	{
-		$prefix=$params['pdo'].':';
+		$prefix=$params['pdo'];
+		if (!strpos($prefix,':')) {
+			$prefix.=':';
+		}
 		$dsn='';
 		foreach ($params as $key => $value)
 		{
@@ -77,37 +80,34 @@ class pdb
 			if ($dsn) $dsn.=';';
 			$dsn.=$key.'='.$value;
 		}
-		return $prefix.$dsn;
+		$args=array($prefix.$dsn);
+		if (!empty($params['username'])) {
+			$args[]=$params['username'];
+			if (!empty($params['password'])) {
+				$args[]=$params['password'];
+			}
+		}
+		return $args;
 	}
 
 	private function connect_pdo_create_database($pdo_conf)
 	{
-echo "Trying to open pdo\n";
-		$pdo = new \PDO(
-			pdb::pdo_dsn($pdo_conf, True),
-			$pdo_conf['username'],
-			$pdo_conf['password']
-		);
+		$r = new \ReflectionClass('\PDO');
+		$pdo = $r->newInstanceArgs(pdb::pdo_args($pdo_conf, True));
 		$pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 		if (!$pdo) {
-echo "Failed to open pdo\n";
 			throw new \Exception('Unable to connect to pdo to create database');
 		}
-echo "Trying to create database\n".'CREATE DATABASE '.$pdo_conf['dbname'].';'."\n";
 		$result=$pdo->query('CREATE DATABASE '.$pdo_conf['dbname'].';');
-print_r($result);
-echo "After trying to create\n";
 		//delete $pdo;
 	}
 
 	private function connect_pdo_from_config($pdo_conf, $already_tried=False)
 	{
 		try {
-			$pdo = new \PDO(
-				pdb::pdo_dsn($pdo_conf),
-				$pdo_conf['username'],
-				$pdo_conf['password']
-			);
+
+			$r = new \ReflectionClass('\PDO');
+			$pdo = $r->newInstanceArgs(pdb::pdo_args($pdo_conf));
 			$pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 		} catch (\PDOException $e) {
 			if (strpos((string)$e, 'Unknown database') && !$already_tried) {
@@ -178,7 +178,6 @@ echo "After trying to create\n";
 			else
 			{
 				if (!$scol->match($existing[$found])) {
-					echo ('ALTER TABLE '.$this->table.' MODIFY COLUMN '.$scol->definition().';');
 					$result=$this->pdo->query('ALTER TABLE '.$this->table.' MODIFY COLUMN '.$scol->definition().';');
 				}
 			}

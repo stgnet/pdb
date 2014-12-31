@@ -31,3 +31,8 @@ $users_schema=array(
 
 $db_users=pdb::connect($pdb, 'users', $users_schema);
 
+
+$lite = pdb::connect(array('pdo' => 'sqlite:test.sqlite'));
+
+$lite_users=pdb::connect($lite, 'users', $users_schema);
+
