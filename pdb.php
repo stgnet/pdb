@@ -4,9 +4,9 @@ namespace stgnet;
 
 class pdb_field
 {
-	public $field;
-	public $type;
-	public $null; // true/false, output 'YES' or 'NO'
+	public $field;	// name
+	public $type;	// sql type
+	public $null;	// true/false
 	public $key;
 	public $default;
 	public $extra;
@@ -29,7 +29,16 @@ class pdb_field
 		$this->null = False;
 		return($this);
 	}
-	public function match($describe)
+	public function match($other)
+	{
+		if ($this->field != $other->field) return(False);
+		if ($this->type != $other->type) return(False);
+		if ($this->null != $other->null) return(False);
+		if ($this->key != $other->key) return(False);
+		if ($this->extra != $other->extra) return(False);
+		return(True);
+	}
+	public function old_match($describe)
 	{
 		if ($this->field != $describe['Field']) return(False);
 		if ($this->type != $describe['Type']) return(False);
@@ -63,8 +72,9 @@ class pdb
 {
 	private $table;
 	public $pdo;
+	private $driver;
 
-	private function pdo_args($params, $omitdbname = false)
+	private function pdo_args($params, $omitdbname = False)
 	{
 		$prefix=$params['pdo'];
 		if (!strpos($prefix,':')) {
@@ -90,25 +100,27 @@ class pdb
 		return $args;
 	}
 
-	private function connect_pdo_create_database($pdo_conf)
+	private function connect_pdo($pdo_conf, $omitdbname = False)
 	{
 		$r = new \ReflectionClass('\PDO');
-		$pdo = $r->newInstanceArgs(pdb::pdo_args($pdo_conf, True));
+		$pdo = $r->newInstanceArgs(pdb::pdo_args($pdo_conf, $omitdbname));
 		$pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 		if (!$pdo) {
 			throw new \Exception('Unable to connect to pdo to create database');
 		}
+		return $pdo;
+	}
+
+	private function connect_pdo_create_database($pdo_conf)
+	{
+		$pdo = pdb::connect_pdo($pdo_conf, True);
 		$result=$pdo->query('CREATE DATABASE '.$pdo_conf['dbname'].';');
-		//delete $pdo;
 	}
 
 	private function connect_pdo_from_config($pdo_conf, $already_tried=False)
 	{
 		try {
-
-			$r = new \ReflectionClass('\PDO');
-			$pdo = $r->newInstanceArgs(pdb::pdo_args($pdo_conf));
-			$pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+			$pdo = pdb::connect_pdo($pdo_conf);
 		} catch (\PDOException $e) {
 			if (strpos((string)$e, 'Unknown database') && !$already_tried) {
 				pdb::connect_pdo_create_database($pdo_conf);
@@ -119,37 +131,79 @@ class pdb
 		return $pdo;
 	}
 
-	public function connect($pdo, $table = NULL, $schema = NULL)
+	public function connect($pdo, $table = NULL, $schema = NULL, $driver = NULL)
 	{
 		if ($pdo instanceof pdb) {
-			return(new self($pdo->pdo, $table, $schema));
+			return(new self($pdo->driver, $pdo->pdo, $table, $schema));
 		}
 		if ($pdo instanceof \PDO) {
-			return(new self($pdo, $table, $schema));
+			return(new self($driver, $pdo, $table, $schema));
 		}
 		if (gettype($pdo) != 'array') {
 			throw new \Exception('Unable to interpret pdo parameter type '.gettype($pdo));
 		}
+		if (empty($pdo['pdo'])) {
+			throw new \Exception('pdo specification not provided');
+		}
+		$driver = explode(':', $pdo['pdo'])[0];
 		$pdo = pdb::connect_pdo_from_config($pdo);
-		return(new self($pdo, $table, $schema));
+		return(new self($driver, $pdo, $table, $schema));
 	}
 
-	private function create_table_from_schema($schema)
+	private function generic_create_table($table, $schema)
 	{
+		if (!$schema) {
+			throw new \Exception('Cannot create table with empty schema');
+		}
 		$fields='';
 		foreach ($schema as $column)
 		{
 			if ($fields) $fields.=',';
 			$fields.=$column->definition();
 		}
-		$this->pdo->query('CREATE TABLE '.$this->table.'('.$fields.');');
+		$this->pdo->query('CREATE TABLE '.$table.'('.$fields.');');
 	}
-
-	private function confirm_schema($schema)
+	private function sqlite_get_schema($table)
 	{
-		if (!$this->table || !$schema) return;
+		$schema = array();
 		try {
-			$describe = $this->pdo->query('describe '.$this->table);
+			$result = $this->pdo->query('pragma table_info('.$table.')');
+		} catch (\PDOException $e) {
+			echo 'table info failed: '.$e."\n";
+			return $schema;
+		}
+		$existing = $result->fetchAll(\PDO::FETCH_ASSOC);
+		/*
+		(
+		    [cid] => 7
+		    [name] => accept
+		    [type] => varchar(256)
+		    [notnull] => 0
+		    [dflt_value] =>
+		    [pk] => 0
+		)
+			public $field;	// name
+			public $type;	// sql type
+			public $null;	// true/false
+			public $key;
+			public $default;
+			public $extra;
+		*/
+		foreach ($existing as $have) {
+			$field = new pdb_field($have['name'], $have['type']);
+			$field->null = ! ($have['notnull']);
+			$field->default = $have['dflt_value'];
+			if ($have['pk']) $field->PrimaryKey();
+
+			$schema[] = $field;
+		}
+
+		return $schema;
+	}
+	private function mysql_get_schema($table)
+	{
+		try {
+			$describe = $this->pdo->query('describe '.$table);
 		} catch (\PDOException $e) {
 			if (strpos((string)$e, 'doesn\'t exist')) {
 				$describe = NULL;
@@ -159,38 +213,82 @@ class pdb
 		}
 		if (!$describe) {
 			$this->create_table_from_schema($schema);
-			$describe = $this->pdo->query('describe '.$this->table);
+			$describe = $this->pdo->query('describe '.$table);
 		}
 
 		$existing = $describe->fetchAll(\PDO::FETCH_ASSOC);
-		foreach ($schema as $scol)
-		{
-			$found=NULL;
-			foreach ($existing as $index => $xcol)
-			{
-				if ($scol->field==$xcol['Field'])
-					$found=$index;
-			}
-			if ($found===NULL)
-			{
-				$result=$this->pdo->query('ALTER TABLE '.$this->table.' ADD '.$scol->definition().';');
-			}
-			else
-			{
-				if (!$scol->match($existing[$found])) {
-					$result=$this->pdo->query('ALTER TABLE '.$this->table.' MODIFY COLUMN '.$scol->definition().';');
+		return $existing;
+	}
+	private function generic_add_schema($table, $field)
+	{
+		$result=$this->pdo->query('ALTER TABLE '.$table.' ADD '.$field->definition().';');
+	}
+	private function generic_update_schema($table, $field)
+	{
+		$result=$this->pdo->query('ALTER TABLE '.$table.' MODIFY COLUMN '.$field->definition().';');
+	}
+	private function load_schema()
+	{
+		throw new \Exception('not implemented');
+	}
+	private function confirm_schema($schema)
+	{
+		$driver_get_schema = $this->driver.'_get_schema';
+		$driver_create_table = $this->driver.'_create_table';
+		$driver_add_schema = $this->driver.'_add_schema';
+		$driver_update_schema = $this->driver.'_update_schema';
+
+		if (!method_exists($this, $driver_get_schema)) {
+			$driver_get_schema = 'generic_get_schema';
+		}
+		if (!method_exists($this, $driver_create_table)) {
+			$driver_create_table = 'generic_create_table';
+		}
+		if (!method_exists($this, $driver_add_schema)) {
+			$driver_add_schema = 'generic_add_schema';
+		}
+		if (!method_exists($this, $driver_update_schema)) {
+			$driver_update_schema = 'generic_update_schema';
+		}
+
+		$existing = $this->$driver_get_schema($this->table);
+		if (!$existing) {
+			$this->$driver_create_table($this->table, $schema);
+			$this->schema = $schema;
+		} else {
+			foreach ($schema as $required) {
+				$found=NULL;
+				foreach ($existing as $have) {
+					if ($required->field == $have->field) {
+						$found = $have;
+						break;
+					}
+				}
+				if (!$found) {
+					$this->$driver_add_schema($this->table, $required);
+				} else {
+					if (!$required->match($found)) {
+						$this->$driver_update_schema($this->table, $required);
+					}
 				}
 			}
 		}
 	}
 
-	public function __construct($pdo, $table, $schema)
+	public function __construct($driver, $pdo, $table, $schema)
 	{
+		$this->driver = $driver;
 		$this->pdo = $pdo;
-		$this->table=$table;
-		$this->confirm_schema($schema);
-		$this->schema = $schema;
-
+		$this->table = $table;
+		$this->schema = NULL;
+		if ($table) {
+			if ($schema) {
+				$this->confirm_schema($schema);
+			} else {
+				$schema = $this->load_schema();
+			}
+			$this->schema = $schema;
+		}
 	}
 	private function prepare_fields($fields, $pattern)
 	{
@@ -211,8 +309,8 @@ class pdb
 	public function insert($record)
 	{
 		
-		$stmt=$this->pdo->prepare('INSERT INTO '.$this->name.' ('.implode(',',array_keys($record)).') VALUES('.$this->prepare_fields($record,':%').');');
-		$stmt->execute($this->prepare_values($record));
+		$stmt=$this->pdo->prepare('INSERT INTO '.$this->table.' ('.implode(',',array_keys($record)).') VALUES('.$this->prepare_fields($record,':%').');');
+		$result = $stmt->execute($this->prepare_values($record));
 	}
 	public function records($where=array(), $like=FALSE)
 	{
@@ -253,10 +351,12 @@ class pdb
 	{
 		return new pdb_field($name, "varchar($len)");
 	}
-
 	public function Field_Decimal($name, $len, $digits)
 	{
 		return new pdb_field($name, "decimal($len,$digits)");
 	}
-
+	public function Field_DateTime($name)
+	{
+		return new pdb_field($name, "datetime");
+	}
 }
