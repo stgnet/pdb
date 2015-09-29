@@ -145,8 +145,10 @@ class pdb
 		if (empty($pdo['pdo'])) {
 			throw new \Exception('pdo specification not provided');
 		}
-		$driver = explode(':', $pdo['pdo'])[0];
-		$pdo = pdb::connect_pdo_from_config($pdo);
+		// can't do this in php 5.3: $driver = explode(':', $pdo['pdo'])[0];
+		$driver = explode(':', $pdo['pdo']);
+		$driver = $driver[0];
+		print_r($driver); $pdo = pdb::connect_pdo_from_config($pdo);
 		return(new self($driver, $pdo, $table, $schema));
 	}
 
@@ -169,7 +171,7 @@ class pdb
 		try {
 			$result = $this->pdo->query('pragma table_info('.$table.')');
 		} catch (\PDOException $e) {
-			echo 'table info failed: '.$e."\n";
+			//echo 'table info failed: '.$e."\n";
 			return $schema;
 		}
 		$existing = $result->fetchAll(\PDO::FETCH_ASSOC);
@@ -217,7 +219,18 @@ class pdb
 		}
 
 		$existing = $describe->fetchAll(\PDO::FETCH_ASSOC);
-		return $existing;
+
+		$schema = array();
+		foreach ($existing as $have) {
+			$field = new pdb_field($have['Field'], $have['Type']);
+			$field->null = ! ($have['Null']);
+			$field->default = $have['Default'];
+			if ($have['Key']) $field->PrimaryKey();
+
+			$schema[] = $field;
+		}
+
+		return $schema;
 	}
 	private function generic_add_schema($table, $field)
 	{
@@ -229,11 +242,18 @@ class pdb
 	}
 	private function load_schema()
 	{
-		throw new \Exception('not implemented');
+		$driver_get_schema = $this->driver.'_get_schema';
+		if (!method_exists($this, $driver_get_schema)) {
+			$driver_get_schema = 'generic_get_schema';
+		}
+		if (!method_exists($this, $driver_get_schema)) {
+			throw new \Exception('not implemented');
+		}
+		return $this->$driver_get_schema($this->table);
+
 	}
 	private function confirm_schema($schema)
 	{
-		$driver_get_schema = $this->driver.'_get_schema';
 		$driver_create_table = $this->driver.'_create_table';
 		$driver_add_schema = $this->driver.'_add_schema';
 		$driver_update_schema = $this->driver.'_update_schema';
@@ -358,5 +378,9 @@ class pdb
 	public function Field_DateTime($name)
 	{
 		return new pdb_field($name, "datetime");
+	}
+	public function Field_Enum($name, $values)
+	{
+		return new pdb_field($name, 'enum(\''.implode('\',\'', $values).'\')');
 	}
 }
