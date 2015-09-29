@@ -148,7 +148,7 @@ class pdb
 		// can't do this in php 5.3: $driver = explode(':', $pdo['pdo'])[0];
 		$driver = explode(':', $pdo['pdo']);
 		$driver = $driver[0];
-		print_r($driver); $pdo = pdb::connect_pdo_from_config($pdo);
+		$pdo = pdb::connect_pdo_from_config($pdo);
 		return(new self($driver, $pdo, $table, $schema));
 	}
 
@@ -339,7 +339,7 @@ class pdb
 		} else {
 			$pattern='% = :%';
 		}
-		$query='SELECT * FROM '.$this->name;
+		$query='SELECT * FROM '.$this->table;
 		if ($where) {
 			$query.=' WHERE '.$this->prepare_fields($where,$pattern);
 		}
@@ -356,12 +356,12 @@ class pdb
 	}
 	public function delete($where)
 	{
-		$stmt=$this->pdo->prepare('DELETE FROM '.$this->name.' WHERE '.$this->prepare_fields($where,'% = :%').';');
+		$stmt=$this->pdo->prepare('DELETE FROM '.$this->table.' WHERE '.$this->prepare_fields($where,'% = :%').';');
 		$stmt->execute($this->prepare_values($where));
 	}
 	public function update($where, $record)
 	{
-		$stmt=$this->pdo->prepare('UPDATE '.$this->name.
+		$stmt=$this->pdo->prepare('UPDATE '.$this->table.
 			' SET '.$this->prepare_fields($record,'% = :R%').
 			' WHERE '.$this->prepare_fields($where,'% = :W%').';');
 		$stmt->execute(array_merge($this->prepare_values($record,':R'),$this->prepare_values($where,':W')));
