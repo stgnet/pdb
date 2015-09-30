@@ -214,8 +214,7 @@ class pdb
 			}
 		}
 		if (!$describe) {
-			$this->create_table_from_schema($schema);
-			$describe = $this->pdo->query('describe '.$table);
+			return $describe;
 		}
 
 		$existing = $describe->fetchAll(\PDO::FETCH_ASSOC);
@@ -254,6 +253,7 @@ class pdb
 	}
 	private function confirm_schema($schema)
 	{
+		$driver_get_schema = $this->driver.'_get_schema';
 		$driver_create_table = $this->driver.'_create_table';
 		$driver_add_schema = $this->driver.'_add_schema';
 		$driver_update_schema = $this->driver.'_update_schema';
