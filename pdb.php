@@ -33,7 +33,7 @@ class pdb_field
 	{
 		if ($this->field != $other->field) return(False);
 		if ($this->type != $other->type) return(False);
-		if ($this->null != $other->null) return(False);
+		//if ($this->null != $other->null) return(False);
 		if ($this->key != $other->key) return(False);
 		if ($this->extra != $other->extra) return(False);
 		return(True);
