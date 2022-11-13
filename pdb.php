@@ -29,6 +29,10 @@ class pdb_field
 		$this->null = False;
 		return($this);
 	}
+	public function SetDefault($value) {
+		$this->default=$value;
+		return($this);
+	}
 	public function match($other)
 	{
 		if ($this->field != $other->field) return(False);
@@ -61,7 +65,10 @@ class pdb_field
 		if (!$this->null) {
 			$definition.=' NOT NULL';
 		}
-		if ($this->default || $this->extra) {
+		if ($this->default) {
+			$definition.=' DEFAULT \''.$this->default.'\'';
+		}
+		if ($this->extra) {
 			throw new \Exception('Unimplemented');
 		}
 		return $definition;
