@@ -16,7 +16,6 @@ class pdb_field
 		$this->field = $field;
 		$this->type = $type;
 		$this->null = True; // default is null field is allowed
-		
 		return($this);
 	}
 	public function PrimaryKey()
@@ -84,7 +83,7 @@ class pdb
 	private function pdo_args($params, $omitdbname = False)
 	{
 		$prefix=$params['pdo'];
-		if (!strpos($prefix,':')) {
+		if (!strpos($prefix, ':')) {
 			$prefix.=':';
 		}
 		$dsn='';
@@ -183,20 +182,12 @@ class pdb
 		}
 		$existing = $result->fetchAll(\PDO::FETCH_ASSOC);
 		/*
-		(
 		    [cid] => 7
 		    [name] => accept
 		    [type] => varchar(256)
 		    [notnull] => 0
 		    [dflt_value] =>
 		    [pk] => 0
-		)
-			public $field;	// name
-			public $type;	// sql type
-			public $null;	// true/false
-			public $key;
-			public $default;
-			public $extra;
 		*/
 		foreach ($existing as $have) {
 			$field = new pdb_field($have['name'], $have['type']);
@@ -317,15 +308,15 @@ class pdb
 			$this->schema = $schema;
 		}
 	}
-	private function prepare_fields($fields, $pattern)
+	private function prepare_fields($fields, $pattern, $sep=',')
 	{
 		$values=array();
 		foreach ($fields as $name => $value) {
 			$values[]=str_replace('%', $name, $pattern);
 		}
-		return implode(',',$values);
+		return implode($sep, $values);
 	}
-	private function prepare_values($fields,$prefix=':')
+	private function prepare_values($fields, $prefix=':')
 	{
 		$values=array();
 		foreach ($fields as $name => $value) {
@@ -335,8 +326,7 @@ class pdb
 	}
 	public function insert($record)
 	{
-		
-		$stmt=$this->pdo->prepare('INSERT INTO '.$this->table.' ('.implode(',',array_keys($record)).') VALUES('.$this->prepare_fields($record,':%').');');
+		$stmt=$this->pdo->prepare('INSERT INTO '.$this->table.' ('.implode(',', array_keys($record)).') VALUES('.$this->prepare_fields($record, ':%').');');
 		$result = $stmt->execute($this->prepare_values($record));
 	}
 	public function records($where=array(), $like=FALSE)
@@ -348,7 +338,7 @@ class pdb
 		}
 		$query='SELECT * FROM '.$this->table;
 		if ($where) {
-			$query.=' WHERE '.$this->prepare_fields($where,$pattern);
+			$query.=' WHERE '.$this->prepare_fields($where, $pattern, ' AND ');
 		}
 		$stmt=$this->pdo->prepare($query.';');
 		$stmt->execute($this->prepare_values($where));
@@ -359,21 +349,20 @@ class pdb
 		$records=$this->records($where);
 		if (!$records) return($records);
 		if (count($records)==1) return($records[0]);
-		throw new \Exception('record() found multiple records'); 
+		throw new \Exception('record() found multiple records');
 	}
 	public function delete($where)
 	{
-		$stmt=$this->pdo->prepare('DELETE FROM '.$this->table.' WHERE '.$this->prepare_fields($where,'% = :%').';');
+		$stmt=$this->pdo->prepare('DELETE FROM '.$this->table.' WHERE '.$this->prepare_fields($where, '% = :%', ' AND ').';');
 		$stmt->execute($this->prepare_values($where));
 	}
 	public function update($where, $record)
 	{
 		$stmt=$this->pdo->prepare('UPDATE '.$this->table.
-			' SET '.$this->prepare_fields($record,'% = :R%').
-			' WHERE '.$this->prepare_fields($where,'% = :W%').';');
-		$stmt->execute(array_merge($this->prepare_values($record,':R'),$this->prepare_values($where,':W')));
+			' SET '.$this->prepare_fields($record, '% = :R%').
+			' WHERE '.$this->prepare_fields($where, '% = :W%', ' AND ').';');
+		$stmt->execute(array_merge($this->prepare_values($record, ':R'), $this->prepare_values($where, ':W')));
 	}
-							   
 	public function Field_String($name, $len)
 	{
 		return new pdb_field($name, "varchar($len)");
