@@ -4,7 +4,7 @@
 	"description": "PDO DataBase cruddy interface for stgnet/pui",
 	"homepage": "http://pdb.stg.net/",
 	"keywords": ["pdo", "database", "crud"],
-	"license": "Apache 2",
+	"license": "Apache-2.0",
 	"authors": [
 		{
 			"name": "Scott Griepentrog",
